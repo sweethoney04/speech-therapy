@@ -2,6 +2,8 @@ import React from 'react'
 
 export default function Result() {
   return (
-    <div>Result</div>
+    <div>
+      <h1>ຜົນການຝຶກຊ້ອມ</h1>
+    </div>
   )
 }
