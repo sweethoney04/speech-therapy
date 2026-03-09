@@ -1,6 +1,7 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { lessons } from "../data/Lesson"; 
+import { sendAudioToSTT } from "../api/api";
 
 // Import UI icons
 import sign from "../assets/images/left.png";
@@ -16,47 +17,45 @@ export default function Practice() {
   const [isRecording, setIsRecording] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const [privacyMode, setPrivacyMode] = useState(false); 
-  
+  const [audioBlob, setAudioBlob] = useState(null); // Store audio for feedback
+
   const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
   const videoRef = useRef(null);
 
   const currentLesson = lessons[currentStep];
 
-  // --- Logic Helpers ---
-  const playSound = (audioSrc) => {
-    const audio = new Audio(audioSrc);
-    audio.play();
-  };
-
-  // --- Navigation ---
-  const handleNext = () => {
-    if (currentStep < lessons.length - 1) {
-      setCurrentStep(currentStep + 1);
-      setIsFinished(false); 
-    } else {
-      navigate("/result"); 
+  // --- NEW: Autoplay Effect ---
+  // This triggers every time the currentStep changes (Next/Previous)
+  useEffect(() => {
+    if (currentLesson?.audio) {
+      playSound(currentLesson.audio);
     }
+  }, [currentStep]);
+
+  // --- Helpers ---
+  const playSound = (audioSrc) => {
+    if (!audioSrc) return;
+    const audio = new Audio(audioSrc);
+    audio.play().catch(err => {
+      // Browsers block autoplay if the user hasn't clicked anything on the site yet
+      console.log("Autoplay blocked. User interaction required.", err);
+    });
   };
 
-  // Added missing handlePrevious function
   const handlePrevious = () => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
-      setIsFinished(true); // Allow them to see navigation for completed steps
+      setIsFinished(true);
+      setAudioBlob(null); // reset for previous step
     }
   };
 
-  // --- Audio/Video Logic ---
   const startRecording = async (e) => {
     if (e) e.preventDefault(); 
     if (isRecording) return;
     try {
-      const constraints = { 
-        audio: true, 
-        video: !privacyMode 
-      };
-
+      const constraints = { audio: true, video: !privacyMode };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
@@ -66,10 +65,20 @@ export default function Practice() {
 
       const recorder = new MediaRecorder(stream);
       mediaRecorderRef.current = recorder;
+
+      const chunks = [];
+      recorder.ondataavailable = (event) => chunks.push(event.data);
+
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: "audio/wav" });
+        setAudioBlob(blob); // save for feedback
+      };
+
       recorder.start();
       setIsRecording(true);
     } catch (err) {
       alert("Please allow microphone/camera access.");
+      console.error(err);
     }
   };
 
@@ -85,16 +94,35 @@ export default function Practice() {
     setIsFinished(true);
   };
 
+  const handleNext = async () => {
+    // If last lesson, send audio to backend for transcription
+    if (currentStep === lessons.length - 1 && audioBlob) {
+      try {
+        const result = await sendAudioToSTT(audioBlob);
+        navigate("/result", { state: { transcription: result.text } });
+      } catch (err) {
+        console.error("STT Error:", err);
+        navigate("/result");
+      }
+    } else {
+      if (currentStep < lessons.length - 1) {
+        setCurrentStep(currentStep + 1);
+        setIsFinished(false);
+        setAudioBlob(null);
+      }
+    }
+  };
+
   return (
     <div className="w-full min-h-screen flex flex-col justify-between bg-[#F5F5F5] font-lao p-4 md:p-6">
       
-      {/* 1. Header Section */}
+      {/* Header */}
       <div className="relative flex flex-col md:flex-row items-center justify-center py-4 md:py-6 px-4 min-h-[80px] md:min-h-[100px] gap-4">
-        {/* Back Button */}
         <button 
           onClick={() => navigate(-1)} 
-          className="md:absolute md:left-6 w-12 h-12 md:w-12 md:h-12 flex items-center justify-center rounded-full border-2 border-[#5DADE2] hover:bg-sky-50 transition-all active:scale-90"
+          className="md:absolute md:left-6 w-12 h-12 flex items-center justify-center rounded-full border-2 border-[#5DADE2] hover:bg-sky-50 transition-all active:scale-90"
         >
+          {/* rotate-180 flips the arrow to the left as per your earlier preference */}
           <img src={sign} alt="Back" className="w-7 h-7 md:w-6 md:h-6 object-contain" />
         </button>
 
@@ -103,10 +131,10 @@ export default function Practice() {
         </h1>
       </div>
 
-      {/* 2. Middle Content - Balanced 3-Column Layout */}
+      {/* Middle Content */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-10 items-center px-4 md:px-16 py-4">
-        
-        {/* Left Column: Video */}
+
+        {/* Lesson Video */}
         <div className="flex flex-col items-center gap-2 md:gap-4 order-2 lg:order-1">
           <p className="text-[#355872] text-md md:text-lg font-bold">Lip Reading Video</p>
           <div className="w-full max-w-[280px] md:max-w-[320px] aspect-video bg-black rounded-3xl overflow-hidden border-4 border-[#355872] shadow-xl">
@@ -119,7 +147,7 @@ export default function Practice() {
           </div>
         </div>
 
-        {/* Center Column: Word & Image */}
+        {/* Word & Image */}
         <div className="flex flex-col items-center order-1 lg:order-2">
           <h2 className="text-[#355872] text-5xl md:text-8xl font-medium mb-4 leading-none text-center">
             {currentLesson.lao}
@@ -130,7 +158,7 @@ export default function Practice() {
           <img src={currentLesson.image} alt="Visual" className="w-28 h-28 md:w-52 md:h-52 object-contain" />
         </div>
 
-        {/* Right Column: Camera */}
+        {/* User Camera */}
         <div className="flex flex-col items-center gap-2 md:gap-4 order-3">
           <p className="text-[#355872] text-md md:text-lg font-bold">ສຽງຂອງທ່ານ (Your Voice)</p>
           <button 
@@ -155,12 +183,13 @@ export default function Practice() {
             Real-time Visualizer
           </div>
         </div>
+
       </div>
 
-      {/* 3. Bottom Controls - Realigned for UI balance */}
+      {/* Bottom Controls */}
       <div className="flex flex-row items-center justify-between w-full pb-12 pt-6 px-4 md:px-12 relative">
         
-        {/* Left: Previous Button Container */}
+        {/* Previous */}
         <div className="flex-1 flex justify-start">
           {currentStep > 0 && (
             <button 
@@ -172,42 +201,42 @@ export default function Practice() {
           )}
         </div>
 
-        {/* Center: Audio/Recording Controls Section */}
+        {/* Listen & Record */}
         <div className="flex flex-row items-center justify-center gap-8 md:gap-20 pb-10 pt-4">
-        {/* Listen Column */}
-        <div className="flex flex-col items-center gap-2 md:gap-4">
-          <button 
-            onClick={() => playSound(currentLesson.audio)}
-            className="w-24 h-24 md:w-32 md:h-32 rounded-full border-4 md:border-5 border-[#5DADE2] flex items-center justify-center hover:bg-sky-50 transition-all active:scale-95 shadow-sm bg-white"
-          >
-            <img src={speaker} alt="Listen" className="w-10 h-10 md:w-16 md:h-16 object-contain" />
-          </button>
-          <div className="text-center text-[#355872]">
-            <p className="text-lg md:text-2xl font-bold">ກົດເພື່ອຟັງ</p>
-            <p className="hidden md:block text-sm">(Tap to Listen)</p>
+          {/* Listen */}
+          <div className="flex flex-col items-center gap-2 md:gap-4">
+            <button 
+              onClick={() => playSound(currentLesson.audio)}
+              className="w-24 h-24 md:w-32 md:h-32 rounded-full border-4 md:border-5 border-[#5DADE2] flex items-center justify-center hover:bg-sky-50 transition-all active:scale-95 shadow-sm bg-white"
+            >
+              <img src={speaker} alt="Listen" className="w-10 h-10 md:w-16 md:h-16 object-contain" />
+            </button>
+            <div className="text-center text-[#355872]">
+              <p className="text-lg md:text-2xl font-bold">ກົດເພື່ອຟັງ</p>
+              <p className="hidden md:block text-sm">(Tap to Listen)</p>
+            </div>
+          </div>
+
+          {/* Record */}
+          <div className="flex flex-col items-center gap-2 md:gap-4">
+            <button 
+              onMouseDown={startRecording}
+              onMouseUp={stopRecording}
+              onTouchStart={startRecording}
+              onTouchEnd={stopRecording}
+              className={`w-24 h-24 md:w-32 md:h-32 rounded-full border-4 md:border-5 flex items-center justify-center transition-all shadow-sm bg-white
+                ${isRecording ? 'border-red-500 bg-red-50 animate-pulse' : 'border-[#5DADE2] hover:bg-sky-50 active:scale-95'}`}
+            >
+              <img src={mic} alt="Record" className="w-10 h-10 md:w-16 md:h-16 object-contain" />
+            </button>
+            <div className="text-center text-[#355872]">
+              <p className="text-lg md:text-2xl font-bold">ກົດເພື່ອອັດ</p>
+              <p className="hidden md:block text-sm">(Tap to Record)</p>
+            </div>
           </div>
         </div>
 
-        {/* Record Column */}
-        <div className="flex flex-col items-center gap-2 md:gap-4">
-          <button 
-            onMouseDown={startRecording}
-            onMouseUp={stopRecording}
-            onTouchStart={startRecording}
-            onTouchEnd={stopRecording}
-            className={`w-24 h-24 md:w-32 md:h-32 rounded-full border-4 md:border-5 flex items-center justify-center transition-all shadow-sm bg-white
-              ${isRecording ? 'border-red-500 bg-red-50 animate-pulse' : 'border-[#5DADE2] hover:bg-sky-50'}`}
-          >
-            <img src={mic} alt="Record" className="w-10 h-10 md:w-16 md:h-16 object-contain" />
-          </button>
-          <div className="text-center text-[#355872]">
-            <p className="text-lg md:text-2xl font-bold">ກົດເພື່ອອັດ</p>
-            <p className="hidden md:block text-sm">(Tap to Record)</p>
-          </div>
-        </div>
-      </div>
-
-        {/* Right: Next Button Container */}
+        {/* Next */}
         <div className="flex-1 flex justify-end">
           {isFinished && (
             <button 
