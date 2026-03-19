@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { lessons } from "../data/Lesson"; 
-import { sendAudioToSTT } from "../api/api";
+import axios from "axios";
 
 // Import UI icons
 import sign from "../assets/images/left.png";
@@ -24,6 +24,28 @@ export default function Practice() {
   const videoRef = useRef(null);
 
   const currentLesson = lessons[currentStep];
+  const handleSpeechRecognition = async (audioBlob) => {
+  const formData = new FormData();
+  formData.append("file", audioBlob, "recording.wev");
+
+  try {
+    const response = await axios.post(
+      "http://localhost:8000/predict",
+      formData,
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+      }
+    );
+
+    const aiResult = response.data.prediction;
+    console.log("AI ໄດ້ຍິນວ່າ:", aiResult);
+
+    return aiResult;
+  } catch (error) {
+    console.error("Error connecting to Backend:", error);
+    return null;
+  }
+};
 
   // --- NEW: Autoplay Effect ---
   // This triggers every time the currentStep changes (Next/Previous)
@@ -95,23 +117,26 @@ export default function Practice() {
   };
 
   const handleNext = async () => {
-    // If last lesson, send audio to backend for transcription
-    if (currentStep === lessons.length - 1 && audioBlob) {
-      try {
-        const result = await sendAudioToSTT(audioBlob);
-        navigate("/result", { state: { transcription: result.text } });
-      } catch (err) {
-        console.error("STT Error:", err);
-        navigate("/result");
-      }
-    } else {
-      if (currentStep < lessons.length - 1) {
-        setCurrentStep(currentStep + 1);
-        setIsFinished(false);
-        setAudioBlob(null);
-      }
+  if (currentStep === lessons.length - 1 && audioBlob) {
+    try {
+      const result = await handleSpeechRecognition(audioBlob);
+
+      navigate("/result", {
+        state: { transcription: result },
+          targetWord: currentLesson.lao
+      });
+    } catch (err) {
+      console.error("STT Error:", err);
+      navigate("/result");
     }
-  };
+  } else {
+    if (currentStep < lessons.length - 1) {
+      setCurrentStep(currentStep + 1);
+      setIsFinished(false);
+      setAudioBlob(null);
+    }
+  }
+};
 
   return (
     <div className="w-full min-h-screen flex flex-col justify-between bg-[#F5F5F5] font-lao p-4 md:p-6">
@@ -149,7 +174,7 @@ export default function Practice() {
 
         {/* Word & Image */}
         <div className="flex flex-col items-center order-1 lg:order-2">
-          <h2 className="text-[#355872] text-5xl md:text-8xl font-medium mb-4 leading-none text-center">
+          <h2 className="text-[#355872] text-5xl md:text-6xl font-medium mb-4 leading-none text-center">
             {currentLesson.lao}
           </h2>
           <p className="text-[#355872] text-lg md:text-2xl font-medium opacity-70 mb-4 md:mb-8 text-center">
