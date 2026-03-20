@@ -15,7 +15,7 @@ import VDO4 from "../assets/videos/vdo15_li.mp4";
 export const lessons = [
   {
     id: 1,
-    lao: 'ສຽງ "ເສືອ"',
+    lao: 'ເສືອ',
     english: 'Sound /Seau/',
     image: tiger,
     audio: sound1,
@@ -23,7 +23,7 @@ export const lessons = [
   },
   {
     id: 2,
-    lao: 'ສຽງ "ປາ"',
+    lao: 'ປາ',
     english: 'Sound /Pa/',
     image: fish,
     audio: sound2,
@@ -31,7 +31,7 @@ export const lessons = [
   },
   {
     id: 3,
-    lao: 'ສຽງ "ແມ່"',
+    lao: 'ແມ່',
     english: 'Sound /Mae/',
     image: mom,
     audio: sound3,
@@ -39,7 +39,7 @@ export const lessons = [
   },
   {
     id: 4,
-    lao: 'ສຽງ "ແມວ"',
+    lao: 'ແມວ',
     english: 'Sound /Meow/',
     image: cat,
     audio: sound4,
